@@ -71,6 +71,79 @@ integer isAllowed(integer mode, string permissions) {
                         //maybe the plugin has not registered itself right now. So assume a blank list or a 0 as value
                         result=invert;
                     }
+/*
+The nPose scripts are licensed under the GPLv2 (http://www.gnu.org/licenses/gpl-2.0.txt), with the following addendum:
+
+The nPose scripts are free to be copied, modified, and redistributed, subject to the following conditions:
+    - If you distribute the nPose scripts, you must leave them full perms.
+    - If you modify the nPose scripts and distribute the modifications, you must also make your modifications full perms.
+
+"Full perms" means having the modify, copy, and transfer permissions enabled in Second Life and/or other virtual world platforms derived from Second Life (such as OpenSim).  If the platform should allow more fine-grained permissions, then "full perms" will mean the most permissive possible set of permissions allowed by the platform.
+*/
+
+list UserDefinedPermissionsList;
+string USER_DEFINED_PERMISSION_TYPE_BOOL = "bool";
+list MacroNames;
+list MacroValues;
+integer UDPBOOL = -804;
+integer MACRO = -807;
+integer DOCARDIF = -3500;
+integer SEAT_UPDATE = 35353;
+list Slots;
+
+integer isAllowed(integer mode, string permissions) {
+    // OPERATORS (listed in order of their precedence)
+    // ! means a logical NOT
+    // & means a logical AND
+    // ~ means a logical OR
+    // Operators may be surrounded by spaces
+    permissions=llStringTrim(permissions, STRING_TRIM);
+    if(permissions=="") {
+        return TRUE;
+    }
+    else {
+        list permItemsOr=llParseString2List(llToLower(permissions), ["~"], []);
+        integer indexOr=~llGetListLength(permItemsOr);
+        integer result;
+        while(++indexOr && !result) {
+            list permItemsAnd=llParseString2List(llList2String(permItemsOr, indexOr), ["&"], []);
+            integer indexAnd=~llGetListLength(permItemsAnd);
+            result=TRUE;
+            while(++indexAnd && result) {
+                integer invert;
+                string item=llStringTrim(llList2String(permItemsAnd, indexAnd), STRING_TRIM);
+                if(llGetSubString(item, 0, 0)=="!") {
+                    invert=TRUE;
+                    item=llStringTrim(llDeleteSubString(item, 0, 0), STRING_TRIM);
+                }
+                if(llGetSubString(item, 0, 0)=="@") {
+                    integer macroIndex=llListFindList(MacroNames, [llDeleteSubString(item, 0, 0)]);
+                    if(~macroIndex) {
+                        result=logicalXor(invert, isAllowed(mode, llList2String(MacroValues, macroIndex)));
+                    }
+                    else {
+                        //unknown Macro: assume that it is set to ""
+                        result=invert;
+                    }
+                }
+                else {
+                    //maybe a user defined permission
+                    integer udpIndex=llListFindList(UserDefinedPermissionsList, [item]);
+                    if(~udpIndex) {
+                        //plugin permission
+                        string pluginPermissionType=llList2String(UserDefinedPermissionsList, udpIndex+1);
+                        if(pluginPermissionType==USER_DEFINED_PERMISSION_TYPE_BOOL) {
+                            result=logicalXor(invert, (integer)llList2String(UserDefinedPermissionsList, udpIndex+2));
+                        }
+                        else {
+                            //error unknown plugin permission type
+                            result=invert;
+                        }
+                    }
+                    else {
+                        //maybe the plugin has not registered itself right now. So assume a blank list or a 0 as value
+                        result=invert;
+                    }
                 }
             }
         }
@@ -136,13 +209,15 @@ default {
             str = "";
             integer Seatcount;
             integer stop = llGetListLength(seatsavailable)/8;
+            list udps;
             for(Seatcount = 0; Seatcount < stop; ++Seatcount) {
                 integer occupiedFlag = 0;
                 if (llList2Key(seatsavailable, Seatcount * 8 + 4)) {
                     occupiedFlag = 1;
                 }
-                llMessageLinked(LINK_SET, 220, "UDPBOOL|seatfilled" + (string)(Seatcount+1) + "=" + (string)occupiedFlag, "");
+                udps+=["seatfilled" + (string)(Seatcount+1) + "=" + (string)occupiedFlag];
             }
+            llMessageLinked(LINK_SET, 220, "UDPBOOL|" + llDumpList2String(udps, "|"), "");
         }
         else if (num == DOCARDIF) {
 /*
